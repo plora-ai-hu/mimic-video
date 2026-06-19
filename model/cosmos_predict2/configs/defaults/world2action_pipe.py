@@ -37,6 +37,25 @@ ACTION_DECODER_NETS = {
         pair_timestep_feature_rank=1024,
         sac_config=SACConfig(mode="none", every_n_blocks=1),
     ),
+    # SO100: joint-space control. in_channels = proprio dim (6 joints),
+    # out_channels = action dim (6 joints). max_horizon >= action horizon (15) + 1.
+    "so100": L(VarNoiseWorld2ActionDIT)(
+        max_horizon=16,
+        in_channels=6,
+        out_channels=6,
+        model_channels=1024,
+        num_blocks=24,
+        num_heads=8,
+        mlp_ratio=4.0,
+        # torch SDPA backend: flash-attn 2.6.3 has no sm_120 (Blackwell/RTX 5090) kernels.
+        # Numerically identical here and the decoder is tiny, so no perf loss.
+        atten_backend="torch",
+        crossattn_emb_channels=2048,
+        use_adaln_lora=True,
+        adaln_lora_dim=128,
+        pair_timestep_feature_rank=1024,
+        sac_config=SACConfig(mode="none", every_n_blocks=1),
+    ),
 }
 
 

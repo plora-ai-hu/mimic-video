@@ -79,4 +79,12 @@ class IterSpeed(EveryN):
 
         log.info(f"{iteration} : iter_speed {iter_speed:.2f} seconds per iteration | Loss: {loss.item():.4f}")
 
+        try:
+            import wandb
+
+            if wandb.run is not None:
+                wandb.log({"train/loss": loss.item(), "train/iter_speed_s": iter_speed}, step=iteration)
+        except Exception:
+            pass
+
         self.time = cur_time
