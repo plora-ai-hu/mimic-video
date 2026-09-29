@@ -6,3 +6,4 @@ uv.lock
 wandb/
 __pycache__/
 .venv/
+secrets.env
