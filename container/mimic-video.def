@@ -1,0 +1,136 @@
+Bootstrap: docker
+From: nvidia/cuda:{{ CUDA_IMAGE }}
+
+# Singularity/Apptainer image for mimic-video (training, data preprocessing, SIMPLER-Bridge and LIBERO eval).
+#
+# Build on a compute node with the Slurm script (run from the repository root):
+#
+#   sbatch container/build.sbatch
+#
+# The script stages the %files inputs in a directory that mirrors the repository layout,
+# because %files paths below are relative to the build directory. Manual build from the repo root:
+#
+#   # A100 / Hopper / default (torch 2.6.0 + cu126, prebuilt wheels)
+#   singularity build --fakeroot mimic-video.sif container/mimic-video.def
+#
+#   # Blackwell (torch 2.8.0 + cu129, builds apex and transformer-engine from source)
+#   singularity build --fakeroot \
+#       --build-arg CUDA_IMAGE=12.9.1-cudnn-devel-ubuntu22.04 \
+#       --build-arg CUDA_EXTRA=cu129 \
+#       --build-arg TORCH_CUDA_ARCH_LIST="10.0;12.0" \
+#       mimic-video.sif container/mimic-video.def
+#
+# Build args require SingularityCE >= 4.0 or Apptainer >= 1.2.
+
+%arguments
+    CUDA_IMAGE=12.6.3-cudnn-devel-ubuntu22.04
+    CUDA_EXTRA=cu126
+    TORCH_CUDA_ARCH_LIST=8.0;9.0
+    MAX_JOBS=8
+    UV_VERSION=latest
+
+%labels
+    Name mimic-video
+    Description Environment for mimic-video Video-Action Models (Cosmos-Predict2 based)
+
+%files
+    model/pyproject.toml /opt/mimic-video/model/pyproject.toml
+    eval/bridge/SimplerEnv /opt/mimic-video/eval/bridge/SimplerEnv
+    eval/libero/LIBERO/requirements.txt /opt/mimic-video/eval/libero/LIBERO/requirements.txt
+
+%environment
+    export VIRTUAL_ENV=/opt/mimic-video/.venv
+    export PATH=/opt/mimic-video/.venv/bin:$PATH
+    export UV_PYTHON_INSTALL_DIR=/opt/uv/python
+    export UV_PROJECT_ENVIRONMENT=/opt/mimic-video/.venv
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    export TOKENIZERS_PARALLELISM=false
+
+%post
+    set -eux
+    export DEBIAN_FRONTEND=noninteractive
+
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl wget git git-lfs build-essential cmake ninja-build pkg-config \
+        ffmpeg libgl1 libegl1 libgles2 libglib2.0-0 libsm6 libxext6 libxrender1 libosmesa6 \
+        libvulkan1 vulkan-tools mesa-vulkan-drivers \
+        p7zip-full aria2 unzip
+    rm -rf /var/lib/apt/lists/*
+
+    # NVIDIA Vulkan ICD and EGL vendor files. The driver libraries are bound in at runtime by `--nv`,
+    # but the loaders need these JSON files to find them (SAPIEN uses Vulkan, robosuite uses EGL).
+    mkdir -p /usr/share/vulkan/icd.d /usr/share/glvnd/egl_vendor.d
+    cat > /usr/share/vulkan/icd.d/nvidia_icd.json <<'EOF'
+{
+    "file_format_version" : "1.0.0",
+    "ICD": {
+        "library_path": "libGLX_nvidia.so.0",
+        "api_version" : "1.3.0"
+    }
+}
+EOF
+    cat > /usr/share/glvnd/egl_vendor.d/10_nvidia.json <<'EOF'
+{
+    "file_format_version" : "1.0.0",
+    "ICD" : {
+        "library_path" : "libEGL_nvidia.so.0"
+    }
+}
+EOF
+
+    # uv, installed system-wide. Python and the venv live under /opt so they are readable by any user.
+    if [ "{{ UV_VERSION }}" = "latest" ]; then
+        UV_INSTALLER=https://astral.sh/uv/install.sh
+    else
+        UV_INSTALLER=https://astral.sh/uv/{{ UV_VERSION }}/install.sh
+    fi
+    curl -LsSf "$UV_INSTALLER" | env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh
+
+    export UV_PYTHON_INSTALL_DIR=/opt/uv/python
+    export UV_PROJECT_ENVIRONMENT=/opt/mimic-video/.venv
+    export UV_CACHE_DIR=/tmp/uv-cache
+    export UV_LINK_MODE=copy
+    export TORCH_CUDA_ARCH_LIST="{{ TORCH_CUDA_ARCH_LIST }}"
+    export MAX_JOBS={{ MAX_JOBS }}
+
+    # Model environment. The project itself (cosmos_predict2, imaginaire) is not installed:
+    # it is imported from the host checkout by running commands from `model/`.
+    # `uv pip install` resolves only for this platform and extra. `uv sync` would build a universal
+    # lock, which needs metadata from every source, including the git builds of apex for the other extra,
+    # and those fail against this image's CUDA toolkit.
+    cd /opt/mimic-video/model
+    uv venv --python 3.10 /opt/mimic-video/.venv
+    . /opt/mimic-video/.venv/bin/activate
+    uv pip install -r pyproject.toml --extra {{ CUDA_EXTRA }}
+
+    # SIMPLER-Bridge eval dependencies (editable install from the copy baked into the image).
+    cd /opt/mimic-video/eval/bridge
+    uv pip install -r SimplerEnv/requirements.txt
+    uv pip install -e SimplerEnv/ManiSkill2_real2sim
+    uv pip install -e SimplerEnv
+
+    # LIBERO eval dependencies. LIBERO itself is used from the host checkout via PYTHONPATH (see eval/libero/eval.sh).
+    uv pip install -r /opt/mimic-video/eval/libero/LIBERO/requirements.txt
+
+    rm -rf "$UV_CACHE_DIR"
+    # /opt/uv only exists when uv downloaded its own Python (the base image may already ship Python 3.10).
+    chmod -R a+rX /opt/mimic-video
+    if [ -d /opt/uv ]; then chmod -R a+rX /opt/uv; fi
+
+%test
+    python -c "import torch, torchvision, transformers, diffusers, hydra, einops; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
+
+%runscript
+    exec "$@"
+
+%help
+    mimic-video environment (Cosmos-Predict2 video backbone + action decoder).
+
+    Run with GPU support and the repository bound in, e.g.:
+
+        singularity exec --nv mimic-video.sif bash -c "cd model && torchrun -m scripts.train --config=cosmos_predict2/configs/config.py -- experiment=..."
+
+    The Python venv at /opt/mimic-video/.venv is on PATH. It is read-only inside the image.
+    SimplerEnv is installed from a copy made at build time; rebuild the image after changing eval/bridge/SimplerEnv.

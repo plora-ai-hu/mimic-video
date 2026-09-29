@@ -1,3 +1,13 @@
+## Changes From Original Repository
+
+This fork tracks changes made on top of the original [mimic-video](https://github.com/mimic-video/mimic-video) release. Add one entry per change, newest first.
+
+| Date | Change | Files |
+| --- | --- | --- |
+| 2026-09-29 | Add Singularity/Apptainer container for the full environment (model, data preprocessing, SIMPLER-Bridge and LIBERO eval). Build on a compute node from the repo root with `sbatch container/build.sbatch` (image goes to `/project/nk_plora/mimic-video.sif`); see the script header for the Blackwell (cu129) build. | [container/mimic-video.def](container/mimic-video.def), [container/build.sbatch](container/build.sbatch) |
+| 2026-09-29 | Add `CLAUDE.md` with repository guidance for Claude Code. | [CLAUDE.md](CLAUDE.md) |
+| 2026-09-29 | Add this change log. | [README.md](README.md) |
+
 # mimic-video: Video-Action Models for Generalizable Robot Control Beyond VLAs
 
 <p align="center">
