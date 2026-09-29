@@ -1,9 +1,11 @@
 ## Changes From Original Repository
 
-This fork tracks changes made on top of the original [mimic-video](https://github.com/mimic-video/mimic-video) release. Add one entry per change, newest first.
+This fork tracks changes made on top of the original [mimic-video](https://github.com/mimic-video/mimic-video) release. It also builds on top of the [pranavsaroha/mimic-video](https://github.com/pranavsaroha/mimic-video) fork. Add one entry per change, newest first.
 
 | Date | Change | Files |
 | --- | --- | --- |
+| 2026-09-29 | Note that this fork also builds on top of the [pranavsaroha/mimic-video](https://github.com/pranavsaroha/mimic-video) fork. | [README.md](README.md) |
+| 2026-09-29 | Add SO-100 (SO-ARM100) support from the [pranavsaroha/mimic-video](https://github.com/pranavsaroha/mimic-video) fork: LeRobot v2.x/v3.0 converters, SO-100 dataloading configs and 6-DoF action decoder, torch SDPA attention backend, closed-loop policy server and robot client, optional wandb logging. See [SO100.md](SO100.md) for details. | [SO100.md](SO100.md), [so100/](so100/), [data_preprocessing/action/process_so100.py](data_preprocessing/action/process_so100.py), [model/cosmos_predict2/configs/dataloading/](model/cosmos_predict2/configs/dataloading/), [world2action_pipe.py](model/cosmos_predict2/configs/defaults/world2action_pipe.py), [world2action_dit.py](model/cosmos_predict2/models/world2action_dit.py), [train.py](model/scripts/train.py), [iter_speed.py](model/cosmos_predict2/callbacks/iter_speed.py) |
 | 2026-09-29 | Add Singularity/Apptainer container for the full environment (model, data preprocessing, SIMPLER-Bridge and LIBERO eval). Build on a compute node from the repo root with `sbatch container/build.sbatch` (image goes to `/project/nk_plora/mimic-video.sif`); see the script header for the Blackwell (cu129) build. | [container/mimic-video.def](container/mimic-video.def), [container/build.sbatch](container/build.sbatch) |
 | 2026-09-29 | Add `CLAUDE.md` with repository guidance for Claude Code. | [CLAUDE.md](CLAUDE.md) |
 | 2026-09-29 | Add this change log. | [README.md](README.md) |
