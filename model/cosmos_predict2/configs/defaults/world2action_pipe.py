@@ -39,7 +39,7 @@ ACTION_DECODER_NETS = {
     ),
     # SO100: joint-space control. in_channels = proprio dim (6 joints),
     # out_channels = action dim (6 joints). max_horizon >= action horizon (15) + 1.
-    "so100": L(VarNoiseWorld2ActionDIT)(
+    "so100": L(World2ActionDIT)(
         max_horizon=16,
         in_channels=6,
         out_channels=6,
