@@ -37,23 +37,6 @@ def launch(config: Config, args: argparse.Namespace) -> None:
     config.validate()
     # Freeze the config so developers don't change it during training.
     config.freeze()  # type: ignore
-
-    # Optional Weights & Biases logging (rank 0 only). Safe no-op if wandb is
-    # unavailable or WANDB_MODE=disabled.
-    if distributed.is_rank0() and os.environ.get("WANDB_MODE", "") != "disabled":
-        try:
-            import wandb
-
-            wandb.init(
-                project=os.environ.get("WANDB_PROJECT", config.job.project),
-                name=config.job.name,
-                group=config.job.group,
-                id=config.job.name,
-                resume="allow",
-            )
-        except Exception as e:  # noqa: BLE001
-            logging.warning(f"wandb.init failed; continuing without wandb: {e}")
-
     trainer = config.trainer.type(config)
     # Create the model
     model = instantiate(config.model)

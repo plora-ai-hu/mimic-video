@@ -35,6 +35,7 @@ from torch.distributed.fsdp import fully_shard
 from torch.utils.checkpoint import (
     CheckpointPolicy,
     create_selective_checkpoint_contexts,
+    noop_context_fn,
 )
 from torchvision import transforms
 from transformer_engine.pytorch.attention import (
@@ -1532,7 +1533,8 @@ class MiniTrainDIT(WeightTrainingStat):
             log.debug(
                 f"Enable selective checkpoint with {sac_config.mode}, for every {sac_config.every_n_blocks} blocks. Total blocks: {len(self.blocks)}"
             )
-            _context_fn = sac_config.get_context_fn()
+            # BLOCK_WISE has no selective policy (None): checkpoint whole blocks with torch's default context.
+            _context_fn = sac_config.get_context_fn() or noop_context_fn
             for block_id, block in self.blocks.named_children():
                 if int(block_id) % sac_config.every_n_blocks == 0:
                     log.debug(f"Enable selective checkpoint for block {block_id}")

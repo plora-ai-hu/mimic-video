@@ -70,7 +70,7 @@ BASE: dict = dict(
 )
 
 lrs = np.logspace(-5, -3, 9)[[5]]
-bszs = [4, 8, 32, 64, 128, 256]
+bszs = [1, 4, 8, 32, 64, 128, 256]
 ranks = [256]
 
 

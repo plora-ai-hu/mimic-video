@@ -61,7 +61,7 @@ class Dataset(_Dataset):
         # thanks to the sampler shuffling, i don't think there is any actual big issue with this.
         # in my opinion dataset getitem should be deterministic and the index should reflect the chunk.
         self._rng = np.random.default_rng()
-        self._dataset_dir = dataset_dir
+        self._dataset_dir = pathlib.Path(dataset_dir)
         self._sequence_length = num_frames
 
         include_only_with_substrings = include_only_with_substrings or []
@@ -108,7 +108,7 @@ class Dataset(_Dataset):
         return len(self.video_paths)
 
     def _get_frames(self, video_path: str) -> torch.Tensor:
-        vr = VideoReader(video_path, ctx=cpu(0), num_threads=0)
+        vr = VideoReader(str(video_path), ctx=cpu(0), num_threads=0)
         n = len(vr)
         if n == 0:
             raise ValueError(f"Empty video: {video_path}")

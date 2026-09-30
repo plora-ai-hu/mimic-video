@@ -114,6 +114,18 @@ EOF
     # LIBERO eval dependencies. LIBERO itself is used from the host checkout via PYTHONPATH (see eval/libero/eval.sh).
     uv pip install -r /opt/mimic-video/eval/libero/LIBERO/requirements.txt
 
+    # decord2 preloads every pip nvidia/*/lib/*.so* (cuDNN sublibraries under their libcudnn_*.so.9 names), while
+    # torch's libcudnn.so.9 later dlopens them as libcudnn_*.so.<full version>. Without a file of that name next to it
+    # ($ORIGIN runpath) the base image's system cuDNN gets loaded as a second copy and convolutions fail with
+    # "ptrDesc->finalize()". Give the pip libraries their full-version names so both lookups hit the same files.
+    CUDNN_LIB=$(python -c "import nvidia.cudnn, os; print(os.path.join(list(nvidia.cudnn.__path__)[0], 'lib'))")
+    CUDNN_VER=$(python -c "from importlib.metadata import version; print('.'.join(version('nvidia-cudnn-cu12').split('.')[:3]))")
+    # Only the sublibraries: a second libcudnn.so.<version> next to libcudnn.so.9 breaks transformer_engine, which
+    # asserts exactly one match for nvidia/cudnn/lib/libcudnn.so.*.
+    for lib in "$CUDNN_LIB"/libcudnn_*.so.9; do
+        ln -sfn "$(basename "$lib")" "${lib%.so.9}.so.$CUDNN_VER"
+    done
+
     rm -rf "$UV_CACHE_DIR"
     # /opt/uv only exists when uv downloaded its own Python (the base image may already ship Python 3.10).
     chmod -R a+rX /opt/mimic-video

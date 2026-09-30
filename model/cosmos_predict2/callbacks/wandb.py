@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+import os
 from collections import defaultdict
 from typing import Literal
 
@@ -25,17 +26,23 @@ def sanitize_for_wandb(val):
 
 
 class WandBCallback(Callback):
+    """Log to Weights & Biases.
+
+    ``WANDB_ENTITY``, ``WANDB_PROJECT`` and ``WANDB_MODE`` from the environment (e.g. from ``secrets.env``, see
+    ``container/train.sbatch``) override the configured entity, project and mode. ``WANDB_API_KEY`` is read by wandb.
+    """
+
     def __init__(
         self,
         mode: Literal["online", "offline", "disabled"],
-        entity_name: str,
+        entity_name: str | None,
         run_name: str,
         project_name: str,
     ):
-        self._mode = mode
-        self._entity_name = entity_name
+        self._mode = os.environ.get("WANDB_MODE") or mode
+        self._entity_name = os.environ.get("WANDB_ENTITY") or entity_name
         self._run_name = run_name
-        self._project_name = project_name
+        self._project_name = os.environ.get("WANDB_PROJECT") or project_name
 
         self._val_mse_sum = defaultdict(lambda: defaultdict(float))
         self._val_loss_sum = 0.0

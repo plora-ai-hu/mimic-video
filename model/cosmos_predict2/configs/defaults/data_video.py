@@ -79,6 +79,29 @@ train_datasets: dict[str, Dataset_] = {
         include_only_with_substrings=["libero_object", "agentview"],
         obs_history=5,
     ),
+    # SO-101: views tiled into one 480x640 frame by data_preprocessing/video/process_so101_video.py (see SO101.md).
+    "so101_1arm_cabling": L(Dataset)(
+        dataset_dir="/scratch/nk_plora/mimic/so101_cabling/video_dataset",
+        num_frames=61,
+        video_height=480,
+        video_width=640,
+        target_fps=5.0,
+        data_fps=5.0,
+        is_val=False,
+        obs_history=5,
+        val_ratio=0.05,
+    ),
+    "so101_2arm": L(Dataset)(
+        dataset_dir="/scratch/nk_plora/mimic/so101_2arm/video_dataset",
+        num_frames=61,
+        video_height=480,
+        video_width=640,
+        target_fps=5.0,
+        data_fps=5.0,
+        is_val=False,
+        obs_history=5,
+        val_ratio=0.05,
+    ),
 }
 
 val_datasets: dict[str, Dataset_] = {}

@@ -8,7 +8,7 @@ Always use caveman mode (ultra level) for replies in this repository: terse, no 
 
 ## Fork change log
 
-This repository is a fork of the original mimic-video release. Every change made on top of the original must be recorded in the "Changes From Original Repository" table at the top of `README.md` (date, change, files; newest first).
+This repository is a fork of the original mimic-video release. The "Changes from the original repository" note at the top of `README.md` summarizes the fork at a high level (goal first, at most 5 sentences). Update it when a change alters that summary; do not add per-change entries.
 
 ## Environment
 
@@ -17,6 +17,10 @@ This repository is a fork of the original mimic-video release. Every change made
   - `cd model && uv sync --extra cu126 && source .venv/bin/activate`
   - `uv sync` builds a universal lock and needs metadata from the git sources of every extra (for example apex for `cu129`). That fails when the local nvcc does not match. The container uses `uv pip install -r pyproject.toml --extra <cu126|cu129>` instead, which resolves only for the current platform.
 - Container: `container/mimic-video.def` (Singularity/Apptainer), built on a compute node by `sbatch container/build.sbatch` from the repo root (never build on the login node). Output: `/project/nk_plora/mimic-video.sif` (override with `SIF=`, extra `--build-arg`s via `BUILD_ARGS=`). Run with `singularity exec --nv /project/nk_plora/mimic-video.sif ...`. The venv lives in the image at `/opt/mimic-video/.venv`; `cosmos_predict2`/`imaginaire` are imported from the host checkout by running from `model/`. SimplerEnv is copied into the image at build time; LIBERO is used from the host via `PYTHONPATH=LIBERO`.
+- Training on Slurm: `EXPERIMENT=<name> sbatch [--gres=gpu:N] container/train.sbatch [override ...]` from the repo root. It sources the gitignored `secrets.env` (template `secrets.env.example`, mode 600) and passes `WANDB_API_KEY` / `WANDB_ENTITY` / `WANDB_PROJECT` / `WANDB_MODE` into the container. Never put secrets in tracked files or echo them.
+- Checkpoints live in `/project/nk_plora/mimic-video-checkpoints`, symlinked to `model/checkpoints` (the home quota is too small for them).
+- SO-101 multi-camera / N-DoF pipeline (LeRobot v3.0 → safetensors, tiled views): see `SO101.md`.
+- GPUs here are A100-40GB. Video backbone training needs `model.config.pipe_config.net.sac_config.mode=block_wise`. Smoke tests: 1 GPU on the `test` partition with the `_bsz1` experiments. The current image needs the cuDNN runtime workaround in `container/train.sbatch` (`CUDNN_COMPAT`) for anything that runs convolutions.
 - Environment sanity check: `cd model && python scripts/test_environment.py`.
 - Checkpoints: `cd model && python scripts/download_checkpoints.py` (needs `hf auth login`), stored in `model/checkpoints/` (gitignored).
 

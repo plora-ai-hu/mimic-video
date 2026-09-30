@@ -70,7 +70,7 @@ cs.store(name="config", node=BASE)
 world2action_pipes = ACTION_DECODER_NETS.keys()
 xattn_layer_idxs = [20]
 lrs = np.logspace(-5, -3, 9)[[4]]
-bszs = [4, 8, 32, 64, 128, 256]
+bszs = [1, 4, 8, 32, 64, 128, 256]
 
 
 def get_local_batch_size(global_bsz: int) -> int:

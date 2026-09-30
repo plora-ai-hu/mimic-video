@@ -104,7 +104,12 @@ class DeviceMonitor(EveryN):
         iteration: int,
     ) -> None:
         cur_process = psutil.Process(os.getpid())
-        cpu_memory_usage = sum(p.memory_info().rss for p in [cur_process] + cur_process.children(recursive=True))  # noqa: RUF005
+        try:
+            processes = [cur_process] + cur_process.children(recursive=True)  # noqa: RUF005
+        except psutil.Error:
+            # children() scans all of /proc, which fails where other users' processes are hidden (e.g. /proc/1 on HPC).
+            processes = [cur_process]
+        cpu_memory_usage = sum(p.memory_info().rss for p in processes)
         cpu_mem_gb = cpu_memory_usage / (1024**3)
 
         peak_gpu_mem_gb = torch.cuda.max_memory_allocated() / (1024**3)

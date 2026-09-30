@@ -50,7 +50,7 @@ class LatentDataset(Dataset):
         super().__init__()
 
         self._rng = np.random.default_rng()
-        self._dataset_dir = dataset_dir
+        self._dataset_dir = pathlib.Path(dataset_dir)
 
         if (num_frames - 1) % 4 != 0:
             msg = "Number of frames must be 1 + 4n."

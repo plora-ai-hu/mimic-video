@@ -35,7 +35,8 @@ BASIC_CALLBACKS = dict(
     ),
     manual_gc=L(ManualGarbageCollection)(every_n=5),
     grad_clip=L(GradClip)(clip_norm=10.0, log_wandb=True),
-    wandb=L(WandBCallback)(mode="online", entity_name=MISSING, run_name="${job.name}", project_name=MISSING),
+    # entity_name=None uses WANDB_ENTITY or the default entity of the API key.
+    wandb=L(WandBCallback)(mode="online", entity_name=None, run_name="${job.name}", project_name=MISSING),
 )
 
 

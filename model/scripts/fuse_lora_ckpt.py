@@ -21,8 +21,9 @@ def fuse_ckpt(ckpt_path: str) -> str:
         lora_rank = lora_rank or this_rank
         assert lora_rank == this_rank, (lora_rank, this_rank)
 
-        adapter = ckpt[b_key] @ ckpt[key]
-        fused = ckpt[base_key] + ALPHA / this_rank * adapter
+        # Fuse in fp32: bf16 matmuls on the CPU are orders of magnitude slower.
+        adapter = ckpt[b_key].float() @ ckpt[key].float()
+        fused = (ckpt[base_key].float() + ALPHA / this_rank * adapter).to(ckpt[base_key].dtype)
 
         del ckpt[key], ckpt[b_key], ckpt[base_key]
 

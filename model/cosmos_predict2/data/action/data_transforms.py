@@ -11,6 +11,7 @@ import PIL.Image
 from torchvision import transforms
 
 from cosmos_predict2.data.action import convert_pose_repr
+from cosmos_predict2.data.action.tiling import tile_views
 from cosmos_predict2.data.action.types import SCIPY_ROTATION_CONVERSIONS, LieRepr, ObsMeta, ObsType
 
 
@@ -229,6 +230,55 @@ class CosmosProcessImage(DataTransform):
             for key, meta in self._metas.items()
             if any(re.search(pattern, key) is not None for pattern in self._targets)
         }
+
+    @property
+    def remove_original(self) -> bool:
+        return True
+
+    @property
+    def ignore_for_normalization(self) -> bool:
+        return True
+
+
+class TileViews(DataTransform):
+    """Tile several raw uint8 camera views into one frame per category (``obs/``, ``action/``).
+
+    Expects ``t h w c`` uint8 inputs (i.e. run before ``CosmosProcessImage``) and writes ``<category>/<out_key>``.
+    See ``cosmos_predict2.data.action.tiling`` for the layout semantics.
+    """
+
+    def __init__(
+        self,
+        layout: list[list[str | None]],
+        cell_size: tuple[int, int],
+        out_key: str = "workspace_rgb",
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+
+        self._layout = [list(row) for row in layout]
+        self._cell_size = tuple(cell_size)
+        self._out_key = out_key
+
+    def _matched_keys(self) -> list[str]:
+        return [key for key in self._metas if any(re.search(pattern, key) is not None for pattern in self._targets)]
+
+    def __call__(self, targets: list[tuple[str, np.ndarray]]) -> Iterator[tuple[str, np.ndarray]]:
+        by_category: dict[str, dict[str, np.ndarray]] = {}
+        for key, imgs in targets:
+            category, name = key.split("/", 1)
+            by_category.setdefault(category, {})[name] = imgs
+
+        for category, views in by_category.items():
+            yield f"{category}/{self._out_key}", tile_views(views, self._layout, self._cell_size)
+
+    @property
+    def new_components(self) -> dict[str, dict]:
+        new = {}
+        for key in self._matched_keys():
+            out = f"{key.split('/', 1)[0]}/{self._out_key}"
+            new.setdefault(out, {**self._metas[key], "obs_type": ObsType.RGB})
+        return new
 
     @property
     def remove_original(self) -> bool:

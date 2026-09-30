@@ -1,0 +1,26 @@
+# Tile the per-view images into one 480x640 frame (2x2 grid of 240x320 cells), see cosmos_predict2/data/action/tiling.py.
+# The layout is the same for one- and two-arm data so video backbones transfer between them; missing views stay black.
+data_transforms:
+  - name: TileViews
+    targets: ["/scene_rgb$", "/right_wrist_rgb$"]
+    layout:
+      - [scene_rgb, null]
+      - [left_wrist_rgb, right_wrist_rgb]
+    cell_size: [240, 320]
+    out_key: workspace_rgb
+
+  - name: CosmosProcessImage
+    targets: [workspace_rgb]
+    resize_sizes: ${policy_io.img_resize_sizes}
+
+  - name: Flatten
+    targets: [lowdim]
+
+  - name: Concat
+    targets: ${policy_io.concat_groups.action/lowdim_concat}
+    out_key: "action/lowdim_concat"
+  - name: Concat
+    targets: ${policy_io.concat_groups.obs/lowdim_concat}
+    out_key: "obs/lowdim_concat"
+
+source_component_names: {}

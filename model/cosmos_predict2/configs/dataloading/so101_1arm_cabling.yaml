@@ -1,0 +1,4 @@
+defaults:
+  - dataset: so101_cabling
+  - policy_io: so101_1arm
+  - _self_
