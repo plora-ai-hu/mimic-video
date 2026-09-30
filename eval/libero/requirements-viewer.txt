@@ -1,0 +1,14 @@
+# Laptop-side dependencies for viewer_client.py (Python 3.10, Linux). No torch needed:
+# init states come from policy_server.py. Versions match the GPU box's eval environment.
+mujoco==3.1.6          # robosuite 1.4.0 breaks on newer MuJoCo (joint-type assertion)
+robosuite==1.4.0
+bddl==1.0.1
+gym==0.25.2
+easydict==1.9
+future==1.0.0
+numpy==1.26.4
+opencv-python==4.11.0.86
+websockets>=14
+tyro
+termcolor         # imported by robosuite, not declared in its metadata
+matplotlib==3.10.9   # imported by LIBERO's env_wrapper

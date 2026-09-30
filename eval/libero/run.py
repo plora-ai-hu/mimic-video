@@ -57,6 +57,7 @@ def load_video2world2action_pipeline(
     action_model_path: str,
     dataset_statistics_path: pathlib.Path,
     dtype: torch.dtype = torch.bfloat16,
+    use_text_encoder: bool = True,
 ) -> Video2World2ActionPipeline:
     """Instantiate the video-to-world-to-action pipeline and load normalizer statistics."""
     config = make_config()
@@ -71,6 +72,7 @@ def load_video2world2action_pipeline(
         device="cuda",
         torch_dtype=dtype,
         load_ema_to_reg=False,
+        use_text_encoder=use_text_encoder,
     )
 
     world2action_pipe = World2ActionPipeline.from_config(
@@ -109,12 +111,17 @@ class VAMInference:
         stop_video_denoising_step: int,
         num_execute_actions: int,
         rollout_dir: pathlib.Path,
+        prompt_embeddings_path: pathlib.Path | None = None,
     ):
+        # Precomputed T5 embeddings (see precompute_prompt_embeddings.py) let the eval skip
+        # loading T5-11B, which does not fit on a 24 GB GPU.
+        self.prompt_embeddings = None if prompt_embeddings_path is None else torch.load(prompt_embeddings_path)
         self.model = load_video2world2action_pipeline(
             experiment_name,
             video_model_path,
             action_model_path,
             dataset_statistics_path,
+            use_text_encoder=self.prompt_embeddings is None,
         )
         self._image_horizon = img_horizon
         self._lowdim_horizon = lowdim_horizon
@@ -170,11 +177,16 @@ class VAMInference:
         input_vid = torch.from_numpy(images[None]).cuda().to(dtype=torch.bfloat16)
         state_tensor = torch.from_numpy(lowdims[None]).cuda().to(dtype=torch.bfloat16)
 
+        prompt_embedding = None
+        if self.prompt_embeddings is not None:
+            prompt_embedding = self.prompt_embeddings[task_description].cuda()
+
         with torch.no_grad():
             pred_actions = self.model(
                 input_vid=input_vid,
                 state_B_HO_O=state_tensor,
                 prompt=task_description,
+                prompt_embedding=prompt_embedding,
                 num_sampling_step=self.num_sampling_steps,
                 stop_after_step=self.stop_video_denoising_step,
                 use_cuda_graphs=True,
@@ -313,6 +325,7 @@ def eval_vam_libero(
     eval_world_size: int = 1,
     num_steps_wait: int = 10,
     seed: int = 0,
+    vam_prompt_embeddings_path: pathlib.Path | None = None,
 ) -> None:
     set_seed_everywhere(seed)
 
@@ -332,6 +345,7 @@ def eval_vam_libero(
         vam_stop_video_denoising_step,
         vam_num_execute_actions,
         rollout_dir,
+        vam_prompt_embeddings_path,
     )
 
     benchmark_dict = benchmark.get_benchmark_dict()

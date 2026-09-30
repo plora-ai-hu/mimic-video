@@ -267,3 +267,11 @@ omit = [
   "config.py",
   "config-3.10.py"
 ]
+
+# Local: static metadata so uv can lock without building the cu129/aarch64 apex source
+# variants (that build fails against this host's CUDA 13.2 nvcc). cu126 on x86_64 installs
+# the prebuilt wheel from the cosmos-cu126 index regardless.
+[[tool.uv.dependency-metadata]]
+name = "apex"
+version = "0.1.0"
+requires-dist = []
