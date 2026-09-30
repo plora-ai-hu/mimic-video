@@ -114,6 +114,9 @@ EOF
     # LIBERO eval dependencies. LIBERO itself is used from the host checkout via PYTHONPATH (see eval/libero/eval.sh).
     uv pip install -r /opt/mimic-video/eval/libero/LIBERO/requirements.txt
 
+    # Linter for the host checkout (config: model/ruff.toml).
+    uv pip install ruff
+
     # decord2 preloads every pip nvidia/*/lib/*.so* (cuDNN sublibraries under their libcudnn_*.so.9 names), while
     # torch's libcudnn.so.9 later dlopens them as libcudnn_*.so.<full version>. Without a file of that name next to it
     # ($ORIGIN runpath) the base image's system cuDNN gets loaded as a second copy and convolutions fail with

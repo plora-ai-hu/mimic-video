@@ -20,7 +20,7 @@ This repository is a fork of the original mimic-video release. The "Changes from
 - Training on Slurm: `EXPERIMENT=<name> sbatch [--gres=gpu:N] container/train.sbatch [override ...]` from the repo root. It sources the gitignored `secrets.env` (template `secrets.env.example`, mode 600) and passes `WANDB_API_KEY` / `WANDB_ENTITY` / `WANDB_PROJECT` / `WANDB_MODE` into the container. Never put secrets in tracked files or echo them.
 - Checkpoints live in `/project/nk_plora/mimic-video-checkpoints`, symlinked to `model/checkpoints` (the home quota is too small for them).
 - SO-101 multi-camera / N-DoF pipeline (LeRobot v3.0 → safetensors, tiled views): see `SO101.md`.
-- GPUs here are A100-40GB. Video backbone training needs `model.config.pipe_config.net.sac_config.mode=block_wise`. Smoke tests: 1 GPU on the `test` partition with the `_bsz1` experiments. The current image needs the cuDNN runtime workaround in `container/train.sbatch` (`CUDNN_COMPAT`) for anything that runs convolutions.
+- GPUs here are A100-40GB. Video backbone training needs `model.config.pipe_config.net.sac_config.mode=block_wise`. Smoke tests: 1 GPU on the `test` partition with the `_bsz1` experiments.
 - Environment sanity check: `cd model && python scripts/test_environment.py`.
 - Checkpoints: `cd model && python scripts/download_checkpoints.py` (needs `hf auth login`), stored in `model/checkpoints/` (gitignored).
 
@@ -36,8 +36,8 @@ torchrun -m scripts.train --config=cosmos_predict2/configs/config.py -- experime
 - Video model finetuning experiments: `model/cosmos_predict2/configs/experiment/video2world.py`, datasets in `configs/defaults/data_video.py`.
 - Action decoder experiments: `model/cosmos_predict2/configs/experiment/world2action.py`, dataset yaml in `configs/dataloading/dataset/`.
 - Wandb entity: `model/cosmos_predict2/configs/defaults/callbacks.py`.
-- Eval: `bash eval/bridge/eval.sh`, `bash eval/bridge/eval_hil.sh`, `bash eval/libero/eval.sh` (edit `GPUS` and `checkpoint_dir` at the top of each script first).
-- Lint: `ruff` with `model/ruff.toml` (line length 120, py310).
+- Eval: use the `mimic-eval` skill (`.claude/skills/mimic-eval/SKILL.md`) for any evaluation. Video backbone rollouts: `CKPTS="base=<ckpt> ft=<fused ckpt>" sbatch eval/video/eval.sbatch` from the repo root. Simulator evals: `bash eval/bridge/eval.sh`, `bash eval/bridge/eval_hil.sh`, `bash eval/libero/eval.sh` (edit `GPUS` and `checkpoint_dir` at the top of each script first).
+- Lint: `ruff` with `model/ruff.toml` (line length 120, py310). Ruff is installed in the container only: `singularity exec /project/nk_plora/mimic-video.sif ruff check --config model/ruff.toml <paths>` from the repo root (`ruff format --check` likewise). This is light enough for the login node.
 
 There is no test suite beyond `scripts/test_environment.py`.
 
@@ -50,6 +50,7 @@ There is no test suite beyond `scripts/test_environment.py`.
   - `data/action/`: action dataloading (safetensors episodes, dataset statistics).
 - `data_preprocessing/video/`: builds video finetuning datasets (`video/*.mp4`, `metas/*.txt`, T5 `language_embeddings/`, optional `video_embeddings/`).
 - `data_preprocessing/action/`: converts raw Bridge / LIBERO data to safetensors, precomputes or transfers T5 and video embeddings.
+- `eval/video/`: video backbone rollouts against real clips (`prepare.py`, `run_video2world.py`, `compare.py`, driven by `eval.sbatch`).
 - `eval/bridge/SimplerEnv/` and `eval/libero/LIBERO/`: vendored simulators with integrated mimic-video policies (`simpler_env/main_inference.py`, `main_inference_hil.py`, `eval/libero/run.py`).
 
 See `README.md`, `MODEL.md` and `DATA.md` for details.
