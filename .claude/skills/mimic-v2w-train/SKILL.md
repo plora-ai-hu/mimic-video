@@ -5,7 +5,7 @@ description: Launch, monitor and resume video2world (V2W) video backbone fine-tu
 
 # Fine-tuning the video backbone (video2world)
 
-The video backbone is a LoRA (rank 256) finetune of Cosmos-Predict2 2B. The action decoder is trained afterwards on top of the frozen, fused backbone (see `SO101.md`, step 5). For evaluating a finished or intermediate checkpoint, use the `mimic-eval` skill.
+The video backbone is a LoRA (rank 256) finetune of Cosmos-Predict2 2B. The action decoder is trained afterwards on top of the frozen, fused backbone with the `mimic-w2a-train` skill. For evaluating a finished or intermediate checkpoint, use the `mimic-eval` skill.
 
 ## 1. Preconditions
 
