@@ -190,7 +190,7 @@ class ImaginaireTrainer:
         if hasattr(dataloader_train.dataset, "stats_id"):
             log.info(f"Stats id {dataloader_train.dataset.stats_id=}")
         # Initial validation.
-        if self.config.trainer.run_validation and iteration == 0:
+        if self.config.trainer.run_validation and self.config.trainer.run_validation_at_start and iteration == 0:
             self.validate(model, dataloader_val_cfg, iteration=iteration)
             log.info("Initial validation done.")
         _end_training = False

@@ -345,6 +345,8 @@ class TrainerConfig:
     logging_iter: int = 100
     # Whether we want to run the validation routines.
     run_validation: bool = True
+    # Whether to run validation once before the first training iteration.
+    run_validation_at_start: bool = True
     # How often we evaluate on the validation set.
     validation_iter: int = 999999999
     # If it hasn't been this many minutes since the last epoch checkpoint save, skip it.
