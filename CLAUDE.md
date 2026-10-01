@@ -20,6 +20,7 @@ This repository is a fork of the original mimic-video release. The "Changes from
 - Training on Slurm: `EXPERIMENT=<name> sbatch [--gres=gpu:N] container/train.sbatch [override ...]` from the repo root. It sources the gitignored `secrets.env` (template `secrets.env.example`, mode 600) and passes `WANDB_API_KEY` / `WANDB_ENTITY` / `WANDB_PROJECT` / `WANDB_MODE` into the container. Never put secrets in tracked files or echo them.
 - Video backbone (V2W) fine-tuning: use the `mimic-v2w-train` skill (`.claude/skills/mimic-v2w-train/SKILL.md`) to launch, monitor and resume runs.
 - Action decoder (W2A) training on a fused backbone: use the `mimic-w2a-train` skill (`.claude/skills/mimic-w2a-train/SKILL.md`).
+- Git commits: use the `mimic-commit` skill (`.claude/skills/mimic-commit/SKILL.md`): title-only message plus the Co-Authored-By trailer.
 - Serving an SO-101 action decoder to the robot (policy server on a GPU node, SSH tunnel, LeRobot client): use the `mimic-policy-serve` skill (`.claude/skills/mimic-policy-serve/SKILL.md`).
 - Checkpoints live in `/project/nk_plora/mimic-video-checkpoints`, symlinked to `model/checkpoints` (the home quota is too small for them).
 - SO-101 multi-camera / N-DoF pipeline (LeRobot v3.0 → safetensors, tiled views): see `SO101.md`.
