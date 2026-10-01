@@ -11,11 +11,11 @@
 
 # Video backbone rollouts: condition on the first 5 frames of dataset clips, generate 61 frames with each checkpoint
 # and compare them against the real clips (eval/video/compare.py). Submit from the repository root:
-#   CKPTS="base=model/checkpoints/video_backbone/v2w_pretrained_cosmos.pt ft=/path/to/iter_000010000_fused.pt" \
-#     sbatch eval/video/eval.sbatch
+#   CKPTS="ft=/path/to/iter_000010000_fused.pt" sbatch eval/video/eval.sbatch
 #
 # Environment variables:
 #   CKPTS     required; space-separated name=path pairs (fused DiT checkpoints; paths relative to the repo root work)
+#   BASE      1 to also roll out the base Cosmos backbone as the first column "base" (default: 0, ground truth only)
 #   DATASET   video dataset with video/ and metas/ (default: SO-101 cabling)
 #   SPLIT     val | train | all, clips taken from the dataset in sorted order (default: val)
 #   NUM       number of clips (default: 5)
@@ -30,6 +30,8 @@ SCRATCH_ROOT=${SCRATCH_ROOT:-/scratch/nk_plora}
 REPO=${REPO:-${SLURM_SUBMIT_DIR:-$(pwd)}}
 SIF=${SIF:-$PROJECT_ROOT/mimic-video.sif}
 CKPTS=${CKPTS:?set CKPTS to space-separated name=checkpoint pairs}
+BASE=${BASE:-0}
+BASE_CKPT=model/checkpoints/video_backbone/v2w_pretrained_cosmos.pt
 DATASET=${DATASET:-$SCRATCH_ROOT/mimic/so101_cabling/video_dataset}
 SPLIT=${SPLIT:-val}
 NUM=${NUM:-5}
@@ -44,6 +46,7 @@ if [[ ! -f "$REPO/model/pyproject.toml" ]]; then
 fi
 [[ -f "$SIF" ]] || { echo "Container image missing: $SIF (run: sbatch container/build.sbatch)" >&2; exit 1; }
 
+[[ "$BASE" == 1 ]] && CKPTS="base=$BASE_CKPT $CKPTS"
 NAMES=()
 PATHS=()
 for pair in $CKPTS; do
@@ -52,6 +55,7 @@ for pair in $CKPTS; do
     [[ "$name" =~ ^[A-Za-z0-9_-]+$ && "$pair" == *=* ]] || { echo "Bad CKPTS entry: $pair (want name=path)" >&2; exit 1; }
     [[ "$path" == /* ]] || path=$REPO/$path
     [[ -f "$path" ]] || { echo "Checkpoint missing: $path" >&2; exit 1; }
+    [[ " ${NAMES[*]} " != *" $name "* ]] || { echo "Duplicate CKPTS name: $name" >&2; exit 1; }
     NAMES+=("$name")
     PATHS+=("$path")
 done
@@ -87,6 +91,8 @@ run() { singularity exec --nv "${BINDS[@]}" --env PYTHONPATH=. --env TOKENIZERS_
 
 run python ../eval/video/prepare.py --dataset "$DATASET" --out "$OUT" --models "${NAMES[@]}" "${EPISODE_ARGS[@]}"
 for i in "${!NAMES[@]}"; do
+    # Drop rollouts from an earlier job that used the same OUT, so compare.py only sees videos generated now.
+    rm -rf "${OUT:?}/${NAMES[$i]}"
     # --save_path only places the config yaml; the batch JSON sets the video paths.
     run python scripts/run_video2world.py --dit_path "${PATHS[$i]}" --batch_input_json "$OUT/batch_${NAMES[$i]}.json" \
         --save_path "$OUT/${NAMES[$i]}/config.mp4" --num_conditional_frames 5 --disable_guardrail \

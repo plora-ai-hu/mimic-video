@@ -39,7 +39,7 @@ torchrun -m scripts.train --config=cosmos_predict2/configs/config.py -- experime
 - Video model finetuning experiments: `model/cosmos_predict2/configs/experiment/video2world.py`, datasets in `configs/defaults/data_video.py`.
 - Action decoder experiments: `model/cosmos_predict2/configs/experiment/world2action.py`, dataset yaml in `configs/dataloading/dataset/`.
 - Wandb entity: `model/cosmos_predict2/configs/defaults/callbacks.py`.
-- Eval: use the `mimic-eval` skill (`.claude/skills/mimic-eval/SKILL.md`) for any evaluation. Video backbone rollouts: `CKPTS="base=<ckpt> ft=<fused ckpt>" sbatch eval/video/eval.sbatch` from the repo root. Simulator evals: `bash eval/bridge/eval.sh`, `bash eval/bridge/eval_hil.sh`, `bash eval/libero/eval.sh` (edit `GPUS` and `checkpoint_dir` at the top of each script first).
+- Eval: use the `mimic-eval` skill (`.claude/skills/mimic-eval/SKILL.md`) for any evaluation. Video backbone rollouts: `CKPTS="ft=<fused ckpt>" sbatch eval/video/eval.sbatch` from the repo root (add `BASE=1` for a base-model column). Simulator evals: `bash eval/bridge/eval.sh`, `bash eval/bridge/eval_hil.sh`, `bash eval/libero/eval.sh` (edit `GPUS` and `checkpoint_dir` at the top of each script first).
 - Lint: `ruff` with `model/ruff.toml` (line length 120, py310). Ruff is installed in the container only: `singularity exec /project/nk_plora/mimic-video.sif ruff check --config model/ruff.toml <paths>` from the repo root (`ruff format --check` likewise). This is light enough for the login node.
 
 There is no test suite beyond `scripts/test_environment.py`.
