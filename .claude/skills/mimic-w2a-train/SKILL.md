@@ -89,7 +89,7 @@ A pending job has no log yet. `squeue -j JOBID -o '%T %r %S'` shows the reason a
 
 - Output directory: `/project/nk_plora/outputs/mimic-video/vam/<decoder net>/<job name>/`, for example `vam/so101_1arm/...`. The path is `<job.project>/<job.group>/<job.name>`: `job.project` is `vam`, and `job.group` is the decoder net. This is not the `posttraining/` tree of the backbone runs.
 - Checkpoints: `checkpoints/model/iter_XXXXXXXXX.pt`. They hold only the decoder weights (`net.*`), not the backbone, and they need no fusing. Inference must load the same backbone through `video_dit_path`, and the same normalization statistics.
-- Normalization statistics: `<data_dir>/.statistics_cache/<hash>`, a JSON file that is computed on the first run and reused afterwards. The deploy server (`so100/so100_policy_server.py`, constant `STATS`) needs this path. The hash changes when the data components or transforms change.
+- Normalization statistics: `<data_dir>/.statistics_cache/<hash>`, a JSON file that is computed on the first run and reused afterwards. The policy server (`mimic-policy-serve` skill) finds it on its own when it is the only file there, else it needs `--stats <path>`. The hash changes when the data components or transforms change.
 - Resuming: resubmit the exact same command (same `job.name`). The checkpointer reads `checkpoints/latest_checkpoint.txt` and restores the model, the optimizer and the iteration.
 
 ## 7. Judging the result

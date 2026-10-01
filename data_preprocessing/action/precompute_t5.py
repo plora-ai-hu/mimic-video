@@ -1,8 +1,9 @@
-import torch
 import argparse
 import pathlib
 
+import safetensors
 import safetensors.torch as st
+import torch
 import tqdm
 from imaginaire.auxiliary.text_encoder import CosmosT5TextEncoder, CosmosT5TextEncoderConfig
 from imaginaire.constants import T5_MODEL_DIR
@@ -10,6 +11,8 @@ from imaginaire.constants import T5_MODEL_DIR
 
 def add_t5(path: pathlib.Path, encoder: CosmosT5TextEncoder, embedding: torch.Tensor | None):
     data = st.load_file(path)
+    with safetensors.safe_open(path, "pt") as f:
+        metadata = f.metadata()  # keep the converter's joint names and view mapping
 
     if embedding is None:
         prompt = data["language_instruction"][0].numpy().tobytes().decode("utf-8")
@@ -18,7 +21,7 @@ def add_t5(path: pathlib.Path, encoder: CosmosT5TextEncoder, embedding: torch.Te
     data["language_embedding"] = embedding.float()  # needs to be a dtype numpy has (fix with ml_dtypes?)
     data["language_embedding_timestamps"] = torch.tensor([0], dtype=torch.uint64)
 
-    st.save_file(data, path)
+    st.save_file(data, path, metadata=metadata)
 
 
 def main():
