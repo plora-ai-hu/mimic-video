@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import torch
 
@@ -32,7 +33,8 @@ def fuse_ckpt(ckpt_path: str) -> str:
     print(f"{lora_rank=}")
 
     fused_path = ckpt_path.replace(".pt", "_fused.pt")
-    torch.save(ckpt, fused_path)
+    torch.save(ckpt, f"{fused_path}.tmp")
+    os.replace(f"{fused_path}.tmp", fused_path)
 
     return fused_path
 

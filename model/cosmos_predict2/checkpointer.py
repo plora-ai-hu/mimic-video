@@ -101,19 +101,20 @@ class Checkpointer:
 
         if distributed.get_rank() == 0:
             self.callbacks.on_save_checkpoint(model, state_dict=state_dicts_to_save)
-            folders = state_dicts_to_save.keys()
+            folders = list(state_dicts_to_save.keys())
             for folder in folders:
                 state_dict = state_dicts_to_save[folder]
                 state_dict = misc.to(state_dict, device="cpu")
                 # Wait for previous saver thread to end.
                 if self.save_thread:
                     self.save_thread.join()
-                # Run the checkpoint saver in a separate thread.
+                # Run the checkpoint saver in a separate thread. The folders are saved one after another, so
+                # latest_checkpoint.txt is only updated after the last one, when the checkpoint is complete.
                 checkpoint_path = os.path.join(self.checkpoint_dir_local, folder, checkpoint_file)
                 self.save_thread = threading.Thread(
                     target=self._save_worker_local,
                     daemon=False,
-                    args=(state_dict, checkpoint_path, distributed.get_rank()),
+                    args=(state_dict, checkpoint_path, distributed.get_rank(), folder == folders[-1]),
                 )
                 self.save_thread.start()
 
@@ -122,19 +123,29 @@ class Checkpointer:
         self.callbacks.on_save_checkpoint_end(model=None, iteration=iteration)
 
     @misc.timer("checkpoint saving (local)")
-    def _save_worker_local(self, state_dict: dict[str, torch.Tensor], checkpoint_path: str, rank: int = 0) -> None:
+    def _save_worker_local(
+        self,
+        state_dict: dict[str, torch.Tensor],
+        checkpoint_path: str,
+        rank: int = 0,
+        update_latest: bool = True,
+    ) -> None:
         """Worker to save checkpoint to local disk, spawned with a child thread (runs in parallel with the training).
 
         Args:
             state_dict (dict[str, torch.Tensor]): The state dict of the model/optimizer/scheduler.
             checkpoint_path (str): The path of the model checkpoint.
             rank (int): GPU device (default: 0).
+            update_latest (bool): Point latest_checkpoint.txt at this checkpoint once it is saved.
         """
         os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
         checkpoint_file = os.path.basename(checkpoint_path)
         try:
-            torch.save(state_dict, checkpoint_path)
-            if rank == 0:
+            # Write to a temporary file first, so that a job killed mid-save never leaves a truncated checkpoint.
+            tmp_path = f"{checkpoint_path}.tmp"
+            torch.save(state_dict, tmp_path)
+            os.replace(tmp_path, checkpoint_path)
+            if rank == 0 and update_latest:
                 self._write_latest_checkpoint_file(checkpoint_file)
             log.success(f"Saved checkpoint (local): {checkpoint_path}")
             iteration = int(checkpoint_file.replace("iter_", "").replace(".pt", ""))
@@ -312,8 +323,9 @@ class Checkpointer:
         """
         content = f"{checkpoint_file}\n"
         latest_path = os.path.join(self.checkpoint_dir_local, "latest_checkpoint.txt")
-        with open(latest_path, "w") as file:
+        with open(f"{latest_path}.tmp", "w") as file:
             file.write(content)
+        os.replace(f"{latest_path}.tmp", latest_path)
 
     def _check_checkpoint_exists(self, checkpoint_path: str) -> None:
         """If the file checkpoint_path does not exist, raise an error.

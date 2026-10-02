@@ -20,6 +20,7 @@ import inspect
 import itertools as it
 import os
 import signal
+import time
 
 import torch
 import torch.distributed as dist
@@ -136,6 +137,8 @@ class ImaginaireTrainer:
                 callbacks=self.callbacks,
             )
         self._last_epoch_checkpoint_time = None
+        # Start of the wall-clock budget (trainer.max_wall_time_min).
+        self._start_time = time.monotonic()
         # Initialize the timer for speed benchmarking.
         self.training_timer = misc.TrainingTimer()
         # Send a TimeoutError if a training step takes over timeout_period seconds.
@@ -273,6 +276,13 @@ class ImaginaireTrainer:
                         torch_profiler.step()
                     if memory_profiler:
                         memory_profiler.step()
+                    if self._wall_time_exceeded():
+                        log.info(
+                            f"Wall-time limit of {self.config.trainer.max_wall_time_min} min reached at iteration "
+                            f"{iteration}, stopping."
+                        )
+                        _end_training = True
+                        break
                 if _end_training:
                     break
 
@@ -302,6 +312,15 @@ class ImaginaireTrainer:
         self.checkpointer.finalize()
         distributed.barrier()
         self.callbacks.on_app_end()
+
+    def _wall_time_exceeded(self) -> bool:
+        """Whether trainer.max_wall_time_min has passed. Rank 0 decides, so that all ranks stop at the same iteration."""
+        if self.config.trainer.max_wall_time_min is None:
+            return False
+        exceeded = time.monotonic() - self._start_time > self.config.trainer.max_wall_time_min * 60
+        flag = torch.tensor([int(exceeded)], dtype=torch.int32, device="cuda")
+        distributed.broadcast(flag, 0)
+        return bool(flag.item())
 
     def training_step(
         self,

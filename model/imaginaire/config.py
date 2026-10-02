@@ -353,6 +353,9 @@ class TrainerConfig:
     epoch_checkpoint_throttling_min_period_minutes: int = 0
     # Kill the process after N seconds since the last iteration (usually means dead job).
     timeout_period: int = 999999999
+    # Stop training (and save a checkpoint) once this many minutes have passed since the trainer was created, so that
+    # a job can end cleanly before a Slurm time limit and be resumed by a new job. None disables the limit.
+    max_wall_time_min: float | None = None
     # Tensor memory organization format.
     memory_format: torch.memory_format = torch.preserve_format
     # Gradient accumulation (update step every N iteration).

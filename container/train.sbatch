@@ -16,7 +16,8 @@
 #
 # Weights & Biases: put WANDB_API_KEY (and optionally WANDB_ENTITY / WANDB_PROJECT / WANDB_MODE) into secrets.env
 # at the repository root (cp secrets.env.example secrets.env && chmod 600 secrets.env). It is sourced here and
-# passed into the container; values are never printed.
+# passed into the container; values are never printed. WANDB_RUN_ID / WANDB_RESUME from the submitting environment
+# continue one WandB run across resumed jobs (see container/v2w_autoresume.sh).
 set -euo pipefail
 
 PROJECT_ROOT=${PROJECT_ROOT:-/project/nk_plora}
@@ -38,7 +39,7 @@ fi
 # shellcheck disable=SC1091
 [[ -f "$REPO/secrets.env" ]] && source "$REPO/secrets.env"
 # Singularity forwards the host environment, and wandb rejects empty values (e.g. WANDB_MODE=""), so drop unset ones.
-for var in WANDB_API_KEY WANDB_ENTITY WANDB_PROJECT WANDB_MODE; do
+for var in WANDB_API_KEY WANDB_ENTITY WANDB_PROJECT WANDB_MODE WANDB_RUN_ID WANDB_RESUME; do
     [[ -n "${!var:-}" ]] || unset "$var"
 done
 
@@ -78,6 +79,8 @@ singularity exec --nv \
     ${WANDB_ENTITY:+--env WANDB_ENTITY="$WANDB_ENTITY"} \
     ${WANDB_PROJECT:+--env WANDB_PROJECT="$WANDB_PROJECT"} \
     ${WANDB_MODE:+--env WANDB_MODE="$WANDB_MODE"} \
+    ${WANDB_RUN_ID:+--env WANDB_RUN_ID="$WANDB_RUN_ID"} \
+    ${WANDB_RESUME:+--env WANDB_RESUME="$WANDB_RESUME"} \
     "$SIF" \
     bash -c "$CUDNN_COMPAT"' exec torchrun --standalone --nproc_per_node="$0" -m scripts.train \
         --config=cosmos_predict2/configs/config.py -- experiment="$1" "${@:2}"' \

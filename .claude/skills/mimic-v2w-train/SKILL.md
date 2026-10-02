@@ -69,6 +69,17 @@ Healthy signs in the log: `Iteration N: ... Loss:` lines with a loss of a few un
 - Checkpoints: `/project/nk_plora/outputs/mimic-video/posttraining/video2world/<job name>/checkpoints/model/iter_XXXXXXXXX.pt`, each with a LoRA-fused copy `iter_XXXXXXXXX_fused.pt` (written by `VideoEvalCallback`). The fused copy is what `mimic-eval` and the action decoder's `model.config.video_dit_path` take.
 - Resuming: resubmit the exact same command (same job name). The checkpointer reads `checkpoints/latest_checkpoint.txt` and restores model, optimizer and iteration. Do this after a `TIMEOUT` or a node failure.
 - Once the first checkpoints exist, evaluate them against the base model with the `mimic-eval` skill, rather than trusting the train loss.
+- Do not delete the non-fused `model/` and `optim/` files of the latest checkpoint: resuming needs them, and the fused copy cannot replace them. To continue from a finished run whose non-fused files are gone, start a new run (new `job.name`) with `model.config.model_manager_config.dit_path=<fused checkpoint>`.
+
+## 6. Short time limits (test partition)
+
+When only the `test` partition (1 hour limit) is available, use `container/v2w_autoresume.sh` on the login node, from the repository root:
+
+```bash
+nohup container/v2w_autoresume.sh > /project/nk_plora/logs/v2w_autoresume.log 2>&1 &
+```
+
+It submits one job after another. Each job stops itself after `trainer.max_wall_time_min` (`WALL_MIN`, 48 by default), saves a checkpoint and exits, and the next job resumes from it. Before each submission it deletes all but the newest `KEEP` complete checkpoints; fused copies are only written every `FUSE_ITER` iterations and are kept. All jobs log to one WandB run, whose id is stored in `<run dir>/wandb_run_id`. Experiment, run name, initial weights (`DIT_PATH`), `MAX_ITER` and the Slurm resources are environment variables at the top of the script. Progress is in the watcher log; to stop, kill the watcher process and `scancel` the job.
 
 ## Known issues
 
