@@ -7,7 +7,7 @@ repository). The server is reached through an SSH tunnel, e.g.
     export MIMIC_POLICY_TOKEN=...   # same value as in the server's secrets.env
     python so100/so101_robot_client.py --port /dev/ttyACM0 \
         --camera top=/dev/video0 --camera wrist=/dev/video2 \
-        --view top=scene_rgb --view wrist=right_wrist_rgb --dry-run
+        --view top=scene_rgb --view wrist=right_wrist_rgb --rotate top=180 --dry-run
 
 Control loop, synchronous at the policy rate (5 Hz): every tick reads the joints and all cameras into an ``n_obs``
 frame history. When no targets are pending, a query is sent in the background while the loop keeps ticking with the
@@ -46,6 +46,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--cal-id", default="so_follower", help="LeRobot calibration id of the follower")
     p.add_argument("--camera", type=parse_mapping, action="append", default=[], help="NAME=/dev/videoN, repeatable")
     p.add_argument("--view", type=parse_mapping, action="append", default=[], help="camera NAME=trained view name")
+    p.add_argument(
+        "--rotate", type=parse_mapping, action="append", default=[], help="camera NAME=DEGREES (90, 180, -90)"
+    )
     p.add_argument("--cam-width", type=int, default=640)
     p.add_argument("--cam-height", type=int, default=480)
     p.add_argument("--cam-fps", type=int, default=30)
@@ -128,11 +131,12 @@ def replay(args: argparse.Namespace, client: PolicyClient) -> None:
 
 
 def make_robot(args: argparse.Namespace):
-    from lerobot.cameras.configs import ColorMode
+    from lerobot.cameras.configs import ColorMode, Cv2Backends, Cv2Rotation
     from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig
     from lerobot.robots.so_follower.config_so_follower import SOFollowerRobotConfig
     from lerobot.robots.so_follower.so_follower import SOFollower
 
+    rotation_of = {name: Cv2Rotation(int(degrees)) for name, degrees in args.rotate}
     cameras = {
         name: OpenCVCameraConfig(
             index_or_path=path,
@@ -140,6 +144,8 @@ def make_robot(args: argparse.Namespace):
             width=args.cam_width,
             height=args.cam_height,
             color_mode=ColorMode.RGB,
+            backend=Cv2Backends.V4L2,
+            rotation=rotation_of.get(name, Cv2Rotation.NO_ROTATION),
         )
         for name, path in args.camera
     }
@@ -171,6 +177,8 @@ def control(args: argparse.Namespace, client: PolicyClient) -> None:
     view_of = dict(args.view)
     if set(view_of) != {name for name, _ in args.camera}:
         raise SystemExit("--view must map every --camera name")
+    if set(dict(args.rotate)) - set(view_of):
+        raise SystemExit("--rotate names must be --camera names")
     if set(view_of.values()) - set(info["views"]):
         raise SystemExit(f"views {sorted(view_of.values())} not among the trained views {info['views']}")
 

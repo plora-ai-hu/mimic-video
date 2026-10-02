@@ -56,7 +56,7 @@ Then give the user:
   python so100/so101_robot_client.py --replay <episode>.safetensors --cycles 10     # no robot, checks the tunnel
   python so100/so101_robot_client.py --port /dev/ttyACM0 --cal-id <id> \
     --camera top=/dev/video0 --camera wrist=/dev/video2 \
-    --view top=scene_rgb --view wrist=right_wrist_rgb --dry-run
+    --view top=scene_rgb --view wrist=right_wrist_rgb --rotate top=180 --dry-run
   python so100/so101_robot_client.py ... --exec-steps 3 --max-rel 5              # real motion
   ```
 
