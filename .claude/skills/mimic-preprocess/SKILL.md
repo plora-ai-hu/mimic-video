@@ -47,7 +47,7 @@ Summarize the chosen arguments to the user before starting step 1.
 
 ## 4. Run
 
-Run each step with `srun --ntasks=1` (so it starts once), in the background with Bash `run_in_background`, and check the result before the next step. Replace `<dataroot>`, `<out>` and the views.
+Run steps 1 and 2 with `srun --ntasks=1` (so each starts once), in the background with Bash `run_in_background`, and step 3 with `sbatch`. Check the result of each step before starting the next. Replace `<dataroot>`, `<out>` and the views.
 
 ```bash
 # Step 1: about 4 min per 165 episodes at 15 fps on 32 CPUs; longer for 30 fps and three cameras.
@@ -66,13 +66,19 @@ srun --account=nk_plora --partition=cpu --ntasks=1 --cpus-per-task=16 --mem-per-
     --episodes <out>/episodes --out <out>/video_dataset --num-workers 16'"
 
 # Step 3 (needs model/checkpoints -> /project/nk_plora/mimic-video-checkpoints with text_encoder/)
-srun --account=nk_plora --partition=test --ntasks=1 --gres=gpu:1 --cpus-per-task=16 --time=01:00:00 bash -c \
-  "module load singularity/4.0 && singularity exec --nv -B /project -B /scratch/nk_plora /project/nk_plora/mimic-video.sif bash -c \
+sbatch --account=nk_plora --partition=test --ntasks=1 --gres=gpu:1 --cpus-per-task=24 --mem-per-cpu=4000 --time=00:30:00 \
+  --job-name=mimic_t5 --output=/project/nk_plora/logs/mimic_t5-%j.out --chdir=$PWD \
+  --wrap "module load singularity/4.0 && singularity exec --nv -B /project -B /scratch/nk_plora /project/nk_plora/mimic-video.sif bash -c \
   'cd model && PYTHONPATH=. python ../data_preprocessing/action/precompute_t5.py --dataset-path <out>/episodes && \
    PYTHONPATH=. python ../data_preprocessing/video/precompute_t5_embeddings.py --dataset-path <out>/video_dataset'"
 ```
 
 Steps 1 and 2 skip existing outputs; pass `--overwrite` to redo them.
+
+Step 3 notes:
+- Submit it with `sbatch`, not a background `srun`. A background `srun` is killed when the Claude session ends, and the job is dropped without a log.
+- It needs about 50 GB of host RAM: `text_encoder/t5-11b/pytorch_model.bin` is the full fp32 T5-11B (45 GB), and `torch.load` reads it whole before keeping the encoder. The partition default of 1000 MB per CPU gets OOM-killed (`oom_kill event` in the log), and `test` caps memory at 4000 MB per CPU, so ask for 24 CPUs at 4000 MB (96 GB). The encoder then fits on one A100-40GB.
+- Both datasets need the embeddings: the video dataset loader reads `video_dataset/language_embeddings/<episode>.safetensors` with no fallback, and the action dataloader reads `language_embedding` from the episodes.
 
 ## 5. Verify
 
