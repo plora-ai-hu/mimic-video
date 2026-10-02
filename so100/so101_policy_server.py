@@ -11,6 +11,8 @@ The robot client (``so100/so101_robot_client.py``) reaches it through an SSH tun
 the last ``n_obs`` frames of every camera view at 5 Hz plus the current joint positions. The server tiles the views
 exactly like training (``cosmos_predict2/data/action/tiling.py``), runs the video backbone up to ``--stop-step`` and
 returns the decoder's chunk of absolute joint targets (degrees), the first one 0.2 s after the newest frame.
+One arm (D=6) and two arms (D=12, ``left_*`` then ``right_*`` joints) are served alike; the joint count and names
+come from the statistics and the episode, and the client checks them against its robot.
 Protocol: ``so100/so101_protocol.py``. Connections must present the token from ``$MIMIC_POLICY_TOKEN``.
 """
 
@@ -38,8 +40,10 @@ from imaginaire.lazy_config import instantiate
 from imaginaire.utils.config_helper import override
 
 DTYPE = torch.bfloat16
-# Joint order of LeRobot's SO-100/SO-101 follower, used when the episodes carry no joint names.
+# Joint order of LeRobot's SO-100/SO-101 follower and of its bimanual version, used when the episodes carry no
+# joint names.
 SO_FOLLOWER_JOINTS = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]
+BI_SO_FOLLOWER_JOINTS = [f"{side}_{j}" for side in ("left", "right") for j in SO_FOLLOWER_JOINTS]
 
 
 def parse_args() -> argparse.Namespace:
@@ -71,10 +75,11 @@ def joint_names_of(episode: pathlib.Path, dim: int) -> list[str]:
         meta = f.metadata() or {}
     names = json.loads(meta.get("joint_state_names", "null"))
     if names is None:
-        if dim != len(SO_FOLLOWER_JOINTS):
+        defaults = {len(SO_FOLLOWER_JOINTS): SO_FOLLOWER_JOINTS, len(BI_SO_FOLLOWER_JOINTS): BI_SO_FOLLOWER_JOINTS}
+        if dim not in defaults:
             raise SystemExit(f"{episode} has no joint names and D={dim}; reconvert with so100/process_so100_v3.py.")
-        print(f"    {episode.name} has no joint names, assuming the SO follower order", flush=True)
-        names = SO_FOLLOWER_JOINTS
+        print(f"    {episode.name} has no joint names, assuming the SO follower order for D={dim}", flush=True)
+        names = defaults[dim]
     names = [n.removesuffix(".pos") for n in names]
     if len(names) != dim:
         raise SystemExit(f"{episode}: {len(names)} joint names for D={dim}")

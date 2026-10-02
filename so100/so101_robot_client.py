@@ -1,4 +1,4 @@
-"""SO-101 robot client: drives a LeRobot SO follower with action chunks from ``so100/so101_policy_server.py``.
+"""SO-101 robot client: drives one or two LeRobot SO followers with action chunks from ``so100/so101_policy_server.py``.
 
 Runs on the machine with the robot, in a LeRobot environment (only ``so100/so101_protocol.py`` is needed from this
 repository). The server is reached through the login node: a reverse tunnel from the compute node
@@ -10,6 +10,13 @@ a local tunnel from this machine, e.g.
     python so100/so101_robot_client.py --port /dev/ttyACM0 \
         --camera top=/dev/video0 --camera wrist=/dev/video2 \
         --view top=scene_rgb --view wrist=right_wrist_rgb --rotate top=180 --dry-run
+
+Two arms (12 joints, LeRobot's bimanual SO follower with joints ``left_*`` / ``right_*`` and calibrations
+``<cal id>_left`` / ``<cal id>_right``): pass ``--left-port`` and ``--right-port`` instead of ``--port``, e.g.
+
+    python so100/so101_robot_client.py --left-port /dev/ttyACM0 --right-port /dev/ttyACM1 --cal-id bi_so_follower \
+        --camera top=/dev/video0 --camera left=/dev/video2 --camera right=/dev/video4 \
+        --view top=scene_rgb --view left=left_wrist_rgb --view right=right_wrist_rgb --dry-run
 
 Control loop, synchronous at the policy rate (5 Hz): every tick reads the joints and all cameras into an ``n_obs``
 frame history. When no targets are pending, a query is sent in the background while the loop keeps ticking with the
@@ -44,8 +51,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--server", default="127.0.0.1")
     p.add_argument("--server-port", type=int, default=proto.DEFAULT_PORT)
     p.add_argument("--token", help=f"server token (default: ${proto.TOKEN_ENV})")
-    p.add_argument("--port", default="/dev/ttyACM0", help="follower arm serial port")
-    p.add_argument("--cal-id", default="so_follower", help="LeRobot calibration id of the follower")
+    p.add_argument("--port", default="/dev/ttyACM0", help="follower arm serial port (one arm)")
+    p.add_argument("--left-port", help="left follower serial port (two arms, with --right-port)")
+    p.add_argument("--right-port", help="right follower serial port (two arms, with --left-port)")
+    p.add_argument(
+        "--cal-id", help="LeRobot calibration id (default: so_follower, or bi_so_follower for two arms)"
+    )
     p.add_argument("--camera", type=parse_mapping, action="append", default=[], help="NAME=/dev/videoN, repeatable")
     p.add_argument("--view", type=parse_mapping, action="append", default=[], help="camera NAME=trained view name")
     p.add_argument(
@@ -61,7 +72,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--jpeg-quality", type=int, default=95)
     p.add_argument("--dry-run", action="store_true", help="query and print targets without moving the arm")
     p.add_argument("--replay", help="episode .safetensors to feed instead of the robot")
-    return p.parse_args()
+    args = p.parse_args()
+    if (args.left_port is None) != (args.right_port is None):
+        p.error("--left-port and --right-port go together")
+    args.bimanual = args.left_port is not None
+    if args.cal_id is None:
+        args.cal_id = "bi_so_follower" if args.bimanual else "so_follower"
+    return args
 
 
 class PolicyClient:
@@ -135,7 +152,7 @@ def replay(args: argparse.Namespace, client: PolicyClient) -> None:
 def make_robot(args: argparse.Namespace):
     from lerobot.cameras.configs import ColorMode, Cv2Backends, Cv2Rotation
     from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig
-    from lerobot.robots.so_follower.config_so_follower import SOFollowerRobotConfig
+    from lerobot.robots.so_follower.config_so_follower import SOFollowerConfig, SOFollowerRobotConfig
     from lerobot.robots.so_follower.so_follower import SOFollower
 
     rotation_of = {name: Cv2Rotation(int(degrees)) for name, degrees in args.rotate}
@@ -151,13 +168,21 @@ def make_robot(args: argparse.Namespace):
         )
         for name, path in args.camera
     }
-    config = SOFollowerRobotConfig(
-        port=args.port,
+    max_rel = None if args.dry_run else args.max_rel
+    if not args.bimanual:
+        config = SOFollowerRobotConfig(port=args.port, id=args.cal_id, cameras=cameras, max_relative_target=max_rel)
+        return SOFollower(config)
+
+    from lerobot.robots.bi_so_follower import BiSOFollower, BiSOFollowerConfig
+
+    # Cameras are top-level, so their observation keys stay unprefixed (no left_/right_).
+    config = BiSOFollowerConfig(
         id=args.cal_id,
+        left_arm_config=SOFollowerConfig(port=args.left_port, max_relative_target=max_rel),
+        right_arm_config=SOFollowerConfig(port=args.right_port, max_relative_target=max_rel),
         cameras=cameras,
-        max_relative_target=None if args.dry_run else args.max_rel,
     )
-    return SOFollower(config)
+    return BiSOFollower(config)
 
 
 def send_action(robot, joint_names: list[str], target: np.ndarray) -> None:
@@ -185,7 +210,8 @@ def control(args: argparse.Namespace, client: PolicyClient) -> None:
         raise SystemExit(f"views {sorted(view_of.values())} not among the trained views {info['views']}")
 
     robot = make_robot(args)
-    print(f">>> connecting robot ({args.port}, calibration {args.cal_id}) and cameras ...", flush=True)
+    ports = f"left {args.left_port}, right {args.right_port}" if args.bimanual else args.port
+    print(f">>> connecting robot ({ports}, calibration {args.cal_id}) and cameras ...", flush=True)
     robot.connect()
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     try:
@@ -196,7 +222,7 @@ def control(args: argparse.Namespace, client: PolicyClient) -> None:
         mode = "DRY-RUN (no motion)" if args.dry_run else "EXECUTE"
         print(f">>> ready, mode {mode}, prompt {info['prompt']!r}", flush=True)
         if not args.dry_run:
-            input(">>> Put the arm in a safe pose, keep a hand near the power switch. ENTER to start, Ctrl-C to stop.")
+            input(">>> Arms in a safe pose, keep a hand near the power switch. ENTER to start, Ctrl-C to stop.")
 
         history = {view: deque(maxlen=n_obs) for view in view_of.values()}
         pending: deque[np.ndarray] = deque()
