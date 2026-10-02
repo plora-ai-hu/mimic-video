@@ -239,7 +239,8 @@ def main() -> None:
     srv.bind((args.host, args.port))
     srv.listen(1)
     print(f">>> listening on {args.host}:{args.port}", flush=True)
-    print(f"    laptop: ssh -N -L {args.port}:localhost:{args.port} -J <user>@<login node> {socket.gethostname()}")
+    print(f"    on the cluster: srun --jobid=<job id> --overlap --pty ssh -N -R {args.port}:localhost:{args.port} <user>@<login node IP>")
+    print(f"    on the laptop:  ssh -N -L {args.port}:localhost:{args.port} <user>@komondor.hpc.dkf.hu")
     while True:
         conn, addr = srv.accept()
         conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)

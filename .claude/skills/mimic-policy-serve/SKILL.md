@@ -5,7 +5,7 @@ description: Start, check and stop the SO-101 policy server (so100/so101_policy_
 
 # Serving an SO-101 action decoder
 
-The policy server runs in the mimic-video container on one GPU and listens on `127.0.0.1:8766` of the compute node. The robot client (`so100/so101_robot_client.py`) runs on the user's laptop in a LeRobot environment and connects through an SSH tunnel. Deployment is described in the Deployment section of `SO101.md`, and the wire format in `so100/so101_protocol.py`. Decoders are trained with the `mimic-w2a-train` skill.
+The policy server runs in the mimic-video container on one GPU and listens on `127.0.0.1:8766` of the compute node. The robot client (`so100/so101_robot_client.py`) runs on the user's laptop in a LeRobot environment and connects through two SSH tunnels that meet on the login node: a reverse tunnel from the compute node and a local tunnel from the laptop. The login node does not work as an SSH jump host (`ssh -J` hangs). Deployment is described in the Deployment section of `SO101.md`, and the wire format in `so100/so101_protocol.py`. Decoders are trained with the `mimic-w2a-train` skill.
 
 ## 1. Pick the checkpoints
 
@@ -47,9 +47,17 @@ until grep -m1 'listening on' LOG 2>/dev/null || grep -m1 -E 'Traceback|Error|Sy
 
 Then give the user:
 
-- the job id and the node (the `tunnel:` line of the log names it);
+- the job id and the node (the `=== job` line of the log names it);
 - the `>>> ready:` line: joint names, views, prompt;
-- the tunnel command for the laptop, with the login node filled in if known: `ssh -N -L 8766:localhost:8766 -J <user>@<login node> <node>`;
+- the two tunnels, both kept open while the job runs (fill in the user, the job id and the login node IP; `hostname -I` on the login node gives the internal `10.x.x.x` address, currently `10.150.1.134` for `komondor.hpc.dkf.hu`):
+  ```bash
+  # a. on the cluster, compute node -> login node (the user runs it and answers the auth prompt)
+  srun --jobid=JOBID --overlap --pty ssh -N -R 8766:localhost:8766 <user>@<login node IP>
+  # b. on the laptop -> the same login node
+  ssh -N -L 8766:localhost:8766 <user>@komondor.hpc.dkf.hu
+  ```
+  The login node accepts only keyboard-interactive auth from compute nodes, so tunnel a cannot be started from a non-interactive tool call; hand it to the user. Port 8766 on the login node is shared by all its users; if it is taken, use another login-node port in both tunnels (`-R 50054:localhost:8766`, `-L 8766:localhost:50054`); the server `PORT` and the laptop port stay 8766;
+- for the replay check, a validation episode copied straight from the login node (it mounts `/scratch`; no jump through the compute node): `scp <user>@komondor.hpc.dkf.hu:<data_dir>/episode_XXXXXX.safetensors .`. Validation episodes come from `get_val_mask` in `model/cosmos_predict2/data/action/dataset_action.py` (`seed`, `num_val_episodes` from the dataset yaml, indices into `<data_dir>/paths.pkl`); for `so101_cabling` they are 14, 70, 104, 115, 123, 139, 161, 163;
 - the client commands, in this order:
   ```bash
   export MIMIC_POLICY_TOKEN=...   # same value as in secrets.env
@@ -81,7 +89,9 @@ srun --jobid=JOBID --overlap --ntasks=1 bash -c 'module load singularity/4.0 && 
 ## Known issues
 
 - `bad token`: the laptop's `MIMIC_POLICY_TOKEN` differs from `secrets.env`.
-- `Connection refused` on the laptop: the tunnel is not open, it points at the wrong node, or the server is still loading.
+- `Connection refused` on the laptop: one of the two tunnels is not open, the reverse tunnel points at a different login node than the laptop tunnel, the ports of the two tunnels do not match on the login node, or the server is still loading.
+- `ssh -J <login node> <compute node>` or `scp -J ...` hangs: jumping through the login node does not work here. Use the two tunnels, and copy files from the login node directly.
+- `Warning: remote port forwarding failed for listen port 8766` on the reverse tunnel: another user holds that port on the login node. Pick another login-node port for both tunnels.
 - `... has no joint names ...`: the episodes were written by an older `precompute_t5.py` that dropped the converter metadata. For 6 joints the server assumes the SO follower order; for other joint counts, reconvert the episodes.
 - `robot joints [...] differ from the trained joints [...]`: the LeRobot robot's motor names or order differ from the training data. Do not work around this by reordering blindly; check the dataset's joint names first.
 - `ptrDesc->finalize()` or `Found 2 libcudnn.so.x`: old image. `so101_serve.sbatch` applies the same workarounds as the training and eval scripts; rebuild the image to fix it for good.

@@ -14,7 +14,8 @@
 #   VIDEO_DIT=/path/to/iter_XXXXXXXXX_fused.pt DECODER=/path/to/decoder/iter_XXXXXXXXX.pt \
 #     sbatch so100/so101_serve.sbatch [server option ...]
 # Extra arguments go to so100/so101_policy_server.py (e.g. --stop-step 5 --debug-dir /scratch/...).
-# The server binds 127.0.0.1:$PORT on the compute node; the log prints the SSH tunnel command for the laptop.
+# The server binds 127.0.0.1:$PORT on the compute node; the log prints the two SSH tunnel commands (compute node ->
+# login node, laptop -> login node). Compute nodes cannot be reached through the login node with ssh -J.
 # MIMIC_POLICY_TOKEN comes from secrets.env at the repository root and is never printed.
 set -euo pipefail
 
@@ -45,7 +46,8 @@ echo "=== job ${SLURM_JOB_ID:-local} on $(hostname) ==="
 echo "experiment: $EXPERIMENT"
 echo "backbone:   $VIDEO_DIT"
 echo "decoder:    $DECODER"
-echo "tunnel:     ssh -N -L $PORT:localhost:$PORT -J <user>@<login node> $(hostname)"
+echo "tunnel:     cluster: srun --jobid=${SLURM_JOB_ID:-<job id>} --overlap --pty ssh -N -R $PORT:localhost:$PORT <user>@<login node IP>"
+echo "            laptop:  ssh -N -L $PORT:localhost:$PORT <user>@komondor.hpc.dkf.hu"
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader || true
 
 module load singularity/4.0

@@ -1,9 +1,11 @@
 """SO-101 robot client: drives a LeRobot SO follower with action chunks from ``so100/so101_policy_server.py``.
 
 Runs on the machine with the robot, in a LeRobot environment (only ``so100/so101_protocol.py`` is needed from this
-repository). The server is reached through an SSH tunnel, e.g.
+repository). The server is reached through the login node: a reverse tunnel from the compute node
+(``srun --jobid=<job id> --overlap --pty ssh -N -R 8766:localhost:8766 <user>@<login node IP>``, see SO101.md) and
+a local tunnel from this machine, e.g.
 
-    ssh -N -L 8766:localhost:8766 -J <user>@<login node> <compute node>
+    ssh -N -L 8766:localhost:8766 <user>@komondor.hpc.dkf.hu
     export MIMIC_POLICY_TOKEN=...   # same value as in the server's secrets.env
     python so100/so101_robot_client.py --port /dev/ttyACM0 \
         --camera top=/dev/video0 --camera wrist=/dev/video2 \
