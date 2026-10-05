@@ -24,10 +24,16 @@ arm holding still; then the first ``--exec-steps`` targets of the chunk are sent
 
 ``--replay EPISODE.safetensors`` needs no robot: it feeds a converted episode (``so100/process_so100_v3.py``) to the
 server and prints the error of each chunk against the recorded actions.
+
+``--replay-robot EPISODE.safetensors`` needs no server: it plays the recorded actions of a converted episode on the
+arms at their recorded timing (no cameras needed), after easing the arms into the first recorded pose, and prints how
+far the measured joints were from the recorded joint states. Use it to check that the robot's calibration matches the
+one used for recording; with ``--dry-run`` it only prints the distance to the first pose.
 """
 
 import argparse
 import concurrent.futures
+import json
 import os
 import socket
 import sys
@@ -54,9 +60,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--port", default="/dev/ttyACM0", help="follower arm serial port (one arm)")
     p.add_argument("--left-port", help="left follower serial port (two arms, with --right-port)")
     p.add_argument("--right-port", help="right follower serial port (two arms, with --left-port)")
-    p.add_argument(
-        "--cal-id", help="LeRobot calibration id (default: so_follower, or bi_so_follower for two arms)"
-    )
+    p.add_argument("--cal-id", help="LeRobot calibration id (default: so_follower, or bi_so_follower for two arms)")
     p.add_argument("--camera", type=parse_mapping, action="append", default=[], help="NAME=/dev/videoN, repeatable")
     p.add_argument("--view", type=parse_mapping, action="append", default=[], help="camera NAME=trained view name")
     p.add_argument(
@@ -72,7 +76,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--jpeg-quality", type=int, default=95)
     p.add_argument("--dry-run", action="store_true", help="query and print targets without moving the arm")
     p.add_argument("--replay", help="episode .safetensors to feed instead of the robot")
+    p.add_argument("--replay-robot", help="episode .safetensors whose recorded actions are played on the arms")
     args = p.parse_args()
+    if args.replay and args.replay_robot:
+        p.error("--replay and --replay-robot are exclusive")
     if (args.left_port is None) != (args.right_port is None):
         p.error("--left-port and --right-port go together")
     args.bimanual = args.left_port is not None
@@ -147,6 +154,73 @@ def replay(args: argparse.Namespace, client: PolicyClient) -> None:
         f"mean |err| per joint (deg): {dict(zip(info['joint_names'], np.round(errors.mean((0, 1)), 2), strict=True))}"
     )
     print(f"mean |err| per step (deg):  {np.round(errors.mean((0, 2)), 2)}")
+
+
+def replay_robot(args: argparse.Namespace) -> None:
+    from safetensors import safe_open
+    from safetensors.numpy import load_file
+
+    ep = load_file(args.replay_robot)
+    with safe_open(args.replay_robot, "np") as f:
+        meta = f.metadata() or {}
+    state, action = ep["joint_state_lowdim"], ep["joint_action_lowdim"]
+    t_low = ep["joint_state_lowdim_timestamps"].astype(np.float64) / 1e9
+    t_low -= t_low[0]
+    names = json.loads(meta.get("joint_action_names", "null"))
+
+    robot = make_robot(args)
+    ports = f"left {args.left_port}, right {args.right_port}" if args.bimanual else args.port
+    print(f">>> connecting robot ({ports}, calibration {args.cal_id}) ...", flush=True)
+    robot.connect()
+    try:
+        motors = [key.removesuffix(".pos") for key in robot.action_features]
+        if names is None:
+            if len(motors) != action.shape[1]:
+                raise SystemExit(f"episode has no joint names, D={action.shape[1]}, robot has {len(motors)} joints")
+            print(f">>> episode has no joint names, assuming the robot order {motors}", flush=True)
+            names = motors
+        names = [n.removesuffix(".pos") for n in names]
+        if motors != names:
+            raise SystemExit(f"robot joints {motors} differ from the recorded joints {names}")
+
+        def read_joints() -> np.ndarray:
+            obs = robot.get_observation()
+            return np.array([obs[f"{name}.pos"] for name in names], dtype=np.float32)
+
+        joints = read_joints()
+        print(f">>> episode {args.replay_robot}: {len(action)} actions over {t_low[-1]:.1f} s", flush=True)
+        print(f"   state       {np.round(joints, 1)}\n   first pose  {np.round(action[0], 1)}", flush=True)
+        print(f"   delta       {np.round(action[0] - joints, 1)}", flush=True)
+        if args.dry_run:
+            return
+        input(">>> Clear workspace, hand near the power switch. ENTER to move to the first pose, Ctrl-C to stop.")
+
+        # Ease into the first pose at about 30 deg/s, slower than --max-rel alone would allow.
+        deadline = time.monotonic() + 20.0
+        while np.abs(action[0] - joints).max() > 2.0 and time.monotonic() < deadline:
+            send_action(robot, names, joints + np.clip(action[0] - joints, -1.0, 1.0))
+            time.sleep(1 / 30)
+            joints = read_joints()
+        print(f">>> at first pose, max delta {np.abs(action[0] - joints).max():.1f} deg", flush=True)
+        input(">>> ENTER to play the episode, Ctrl-C to stop.")
+
+        errors = []
+        start = time.monotonic()
+        for i in range(len(action)):
+            delay = start + t_low[i] - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+            send_action(robot, names, action[i])
+            errors.append(np.abs(read_joints() - state[i]))
+            if i % 30 == 0:
+                print(f"[t={t_low[i]:6.1f}s] |measured - recorded state| {np.round(errors[-1], 1)}", flush=True)
+        per_joint = dict(zip(names, np.round(np.stack(errors).mean(0), 2), strict=True))
+        print(f"mean |measured - recorded state| per joint (deg): {per_joint}")
+    except KeyboardInterrupt:
+        print("\n>>> stopped", flush=True)
+    finally:
+        robot.disconnect()
+        print(">>> robot disconnected", flush=True)
 
 
 def make_robot(args: argparse.Namespace):
@@ -270,6 +344,9 @@ def control(args: argparse.Namespace, client: PolicyClient) -> None:
 
 def main() -> None:
     args = parse_args()
+    if args.replay_robot:
+        replay_robot(args)
+        return
     token = args.token or os.environ.get(proto.TOKEN_ENV, "")
     if not token:
         sys.exit(f"Set {proto.TOKEN_ENV} or pass --token.")
