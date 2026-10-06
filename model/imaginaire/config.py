@@ -349,6 +349,8 @@ class TrainerConfig:
     run_validation_at_start: bool = True
     # How often we evaluate on the validation set.
     validation_iter: int = 999999999
+    # Whether to also validate at the end of every epoch. Disable for small datasets, where epochs are a few iterations.
+    validate_at_epoch_end: bool = True
     # If it hasn't been this many minutes since the last epoch checkpoint save, skip it.
     epoch_checkpoint_throttling_min_period_minutes: int = 0
     # Kill the process after N seconds since the last iteration (usually means dead job).

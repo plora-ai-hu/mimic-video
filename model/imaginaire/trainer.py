@@ -300,7 +300,11 @@ class ImaginaireTrainer:
                     )
                     self._last_epoch_checkpoint_time = datetime.datetime.now()
 
-                if self.config.trainer.run_validation and iteration % self.config.trainer.validation_iter != 0:
+                if (
+                    self.config.trainer.run_validation
+                    and self.config.trainer.validate_at_epoch_end
+                    and iteration % self.config.trainer.validation_iter != 0
+                ):
                     torch.cuda.synchronize()
                     torch.cuda.empty_cache()
                     self.validate(model, dataloader_val_cfg, iteration=iteration)
