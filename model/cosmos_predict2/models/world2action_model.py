@@ -78,11 +78,9 @@ def _dp_mean(x: torch.Tensor) -> torch.Tensor:
     return x
 
 
-def _dp_mean_dict(d: dict[str, object], device: torch.device) -> dict[str, float]:
-    keys = list(d.keys())
-    t = torch.stack([torch.as_tensor(d[k], device=device, dtype=torch.float32) for k in keys], dim=0)
-    t = _dp_mean(t)
-    return {k: t[i].item() for i, k in enumerate(keys)}
+def _dp_mse_per_step_joint(pred_B_HA_A: torch.Tensor, target_B_HA_A: torch.Tensor) -> torch.Tensor:
+    """Squared error averaged over the batch and data-parallel ranks, kept per horizon step and joint: (HA, A)."""
+    return _dp_mean(((pred_B_HA_A.float() - target_B_HA_A.float()) ** 2).mean(dim=0))
 
 
 class World2ActionModel(ImaginaireModel):
@@ -414,6 +412,8 @@ class World2ActionModel(ImaginaireModel):
         unnormed_x0_B_HA_A = data_batch["action/lowdim_concat"]
 
         output_batch["mses"] = collections.defaultdict(list)
+        # (sigma, (HA, A) tensor) per mode; saved to val_mse/*.npz by the WandB callback.
+        output_batch["mses_per_step_joint"] = collections.defaultdict(list)
 
         # get mses for gt video + noise
         self.video2world_pipe.scheduler.set_timesteps(35, device=self.tensor_kwargs["device"])
@@ -421,16 +421,13 @@ class World2ActionModel(ImaginaireModel):
             video_sigma_B_1 = video_sigma.repeat(unnormed_x0_B_HA_A.shape[0]).unsqueeze(1)
             unnormed_x0_pred_B_HA_A = self.predict(data_batch, video_sigma_B_1).float()
 
-            mses_gtvid = {
-                "gtvid/full": F.mse_loss(unnormed_x0_pred_B_HA_A, unnormed_x0_B_HA_A.float()),
-            }
-            mses_gtvid = _dp_mean_dict(mses_gtvid, device=unnormed_x0_pred_B_HA_A.device)
+            mse_HA_A = _dp_mse_per_step_joint(unnormed_x0_pred_B_HA_A, unnormed_x0_B_HA_A)
 
             if dist.is_available() and dist.is_initialized() and parallel_state.get_data_parallel_rank() != 0:
                 continue
 
-            for name, mse in mses_gtvid.items():
-                output_batch["mses"][name].append((video_sigma.item(), mse))
+            output_batch["mses"]["gtvid/full"].append((video_sigma.item(), mse_HA_A.mean().item()))
+            output_batch["mses_per_step_joint"]["gtvid"].append((video_sigma.item(), mse_HA_A.cpu()))
 
         del (
             video_sigma,
@@ -478,16 +475,13 @@ class World2ActionModel(ImaginaireModel):
                 use_cuda_graphs=False,
             )
 
-            mses_genvid = {
-                "genvid/full": F.mse_loss(genvid_unnormed_x0_pred_B_HA_A, unnormed_x0_B_HA_A.float()),
-            }
-            mses_genvid = _dp_mean_dict(mses_genvid, device=genvid_unnormed_x0_pred_B_HA_A.device)
+            mse_HA_A = _dp_mse_per_step_joint(genvid_unnormed_x0_pred_B_HA_A, unnormed_x0_B_HA_A)
 
             if dist.is_available() and dist.is_initialized() and parallel_state.get_data_parallel_rank() != 0:
                 continue
 
-            for name, mse in mses_genvid.items():
-                output_batch["mses"][name].append((video_sigma.item(), mse))
+            output_batch["mses"]["genvid/full"].append((video_sigma.item(), mse_HA_A.mean().item()))
+            output_batch["mses_per_step_joint"]["genvid"].append((video_sigma.item(), mse_HA_A.cpu()))
 
         return output_batch, loss
 
