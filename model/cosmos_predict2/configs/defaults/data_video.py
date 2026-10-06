@@ -102,6 +102,17 @@ train_datasets: dict[str, Dataset_] = {
         obs_history=5,
         val_ratio=0.05,
     ),
+    "so101_2arm_cable_harnessing": L(Dataset)(
+        dataset_dir="/scratch/nk_plora/mimic/cable-harnessing-so101-2arm/video_dataset",
+        num_frames=61,
+        video_height=480,
+        video_width=640,
+        target_fps=5.0,
+        data_fps=5.0,
+        is_val=False,
+        obs_history=5,
+        val_ratio=0.05,
+    ),
 }
 
 val_datasets: dict[str, Dataset_] = {}

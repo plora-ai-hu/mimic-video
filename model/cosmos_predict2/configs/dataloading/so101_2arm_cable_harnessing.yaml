@@ -1,0 +1,4 @@
+defaults:
+  - dataset: so101_2arm_cable_harnessing
+  - policy_io: so101_2arm
+  - _self_
