@@ -121,7 +121,9 @@ def register_training_and_val_action_data():
             dataset=video_action_dataset_val,
             num_replicas=L(parallel_state.get_data_parallel_world_size)(),
             rank=L(parallel_state.get_data_parallel_rank)(),
-            shuffle=False,
+            # Fixed-seed shuffle: max_val_iter then covers random timesteps across all val episodes, and the
+            # dataloader is rebuilt each validation (epoch 0), so every pass evaluates the same samples.
+            shuffle=True,
             seed=0,
         ),
         batch_size=1,
