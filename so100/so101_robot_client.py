@@ -69,7 +69,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--cam-width", type=int, default=640)
     p.add_argument("--cam-height", type=int, default=480)
     p.add_argument("--cam-fps", type=int, default=30)
-    p.add_argument("--exec-steps", type=int, default=5, help="targets executed per chunk")
+    p.add_argument("--exec-steps", type=int, default=15, help="targets executed per chunk")
     p.add_argument("--max-rel", type=float, default=5.0, help="max joint change per command (degrees)")
     p.add_argument("--stop-step", type=int, help="video denoising step, overrides the server default")
     p.add_argument("--cycles", type=int, default=0, help="number of chunks, 0 = until Ctrl-C")
@@ -133,20 +133,24 @@ def replay(args: argparse.Namespace, client: PolicyClient) -> None:
         return np.stack([np.interp(t, t_low, values[:, d]) for d in range(values.shape[1])], axis=-1)
 
     horizon = np.arange(1, chunk_len + 1) / hz  # target i is for (i + 1) / hz after the newest frame
-    errors = []
+    errors, latencies, round_trips = [], [], []
     for k in range(0, len(t_img), args.exec_steps):
         if args.cycles and len(errors) >= args.cycles:
             break
         idx = np.clip(np.arange(k - n_obs + 1, k + 1), 0, None)  # left-pad by repeating the first frame
         history = {v: list(ep[v][idx]) for v in views}
         joints = interp(state, np.array([t_img[k]]))[0]
+        t0 = time.time()
         reply = client.predict(joints, history, args.stop_step)
+        round_trips.append(time.time() - t0)
+        latencies.append(reply["latency"])
         target = interp(action, np.minimum(t_img[k] + horizon, t_low[-1]))
         err = np.abs(reply["chunk"] - target)
         errors.append(err)
         print(
-            f"[t={t_img[k]:6.1f}s] {reply['latency']:.2f} s  mean |err| {err.mean():5.2f} deg"
-            f"  first {np.round(err[0], 1)}  last {np.round(err[-1], 1)}",
+            f"[t={t_img[k]:6.1f}s] {reply['latency']:.2f} s (round trip {round_trips[-1]:.2f} s)"
+            f"  mean |err| {err.mean():5.2f} deg"
+            f"  MSE {(err**2).mean():7.2f} deg^2  first {np.round(err[0], 1)}  last {np.round(err[-1], 1)}",
             flush=True,
         )
     errors = np.stack(errors)
@@ -154,6 +158,16 @@ def replay(args: argparse.Namespace, client: PolicyClient) -> None:
         f"mean |err| per joint (deg): {dict(zip(info['joint_names'], np.round(errors.mean((0, 1)), 2), strict=True))}"
     )
     print(f"mean |err| per step (deg):  {np.round(errors.mean((0, 2)), 2)}")
+    print(f"chunk MSE (deg^2): {(errors**2).mean():.2f}")
+    # The first query includes warm-up (and CUDA graph capture with --cuda-graphs), so it is reported apart.
+    print(f"first query: server {latencies[0]:.2f} s, round trip {round_trips[0]:.2f} s")
+    if len(latencies) > 1:
+        for name, values in (("server", latencies[1:]), ("round trip", round_trips[1:])):
+            v = np.asarray(values)
+            print(
+                f"{name} time over {len(v)} later queries (s): mean {v.mean():.2f}  std {v.std():.2f}"
+                f"  median {np.median(v):.2f}  p90 {np.percentile(v, 90):.2f}  min {v.min():.2f}  max {v.max():.2f}"
+            )
 
 
 def replay_robot(args: argparse.Namespace) -> None:
